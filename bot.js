@@ -46,22 +46,30 @@ function startBot() {
     auth: 'microsoft',
     version: "1.21.11",
     profilesFolder: authFolder,
-    viewDistance: 'tiny' // Saves RAM on Render
+    viewDistance: 'tiny',
+    
+    // ✅ NEW FIX: Tell the bot to ignore all chat parsing. Saves huge amounts of RAM/CPU.
+    disableChatHandling: true 
   });
 
-  // ✅ THE ULTIMATE FIX: Raw Packet Injection for 1.21 Resource Packs
+  // ✅ THE ULTIMATE ANTI-LAG FIX
+  // This completely disables gravity, block collision, and physics calculations.
+  // It stops the Node.js event loop from freezing on Render's weak CPU.
+  bot.physicsEnabled = false;
+
+  // Resource Pack Bypass (Keep this, it's working!)
   bot._client.on('add_resource_pack', (data) => {
-    console.log("📦 Server demands a resource pack. Forcing bypass...");
+    console.log("📦 Bypassing resource pack...");
     try {
-      // Send Result 3: "I have successfully downloaded the pack"
       bot._client.write('resource_pack_receive', { uuid: data.uuid, result: 3 });
-      
-      // Send Result 0: "I have successfully loaded the pack"
-      bot._client.write('resource_pack_receive', { uuid: data.uuid, result: 0 });
-      
-      console.log("📦 Resource pack bypassed successfully!");
+      setTimeout(() => {
+          bot._client.write('resource_pack_receive', { uuid: data.uuid, result: 4 });
+          setTimeout(() => {
+              bot._client.write('resource_pack_receive', { uuid: data.uuid, result: 0 });
+          }, 2000);
+      }, 3000);
     } catch (err) {
-      console.log("⚠ Failed to send resource pack bypass:", err.message);
+      console.log("⚠ Failed to bypass pack:", err.message);
     }
   });
 
@@ -72,7 +80,6 @@ function startBot() {
 
     if (afkInterval) clearInterval(afkInterval);
 
-    // Anti-AFK Routine
     afkInterval = setInterval(() => {
       if (!bot.entity) return;
       bot.setControlState('sneak', true);
