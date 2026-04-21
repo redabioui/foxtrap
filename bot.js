@@ -3,7 +3,7 @@ const mineflayer = require('mineflayer');
 const fs = require('fs');
 const path = require('path');
 
-// ---------------- WEB SERVER ----------------
+// ---------------- WEB SERVER (For Render Health Checks) ----------------
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Bot is running!');
@@ -48,28 +48,43 @@ function startBot() {
     profilesFolder: authFolder,
     viewDistance: 'tiny',
     
-    // ✅ NEW FIX: Tell the bot to ignore all chat parsing. Saves huge amounts of RAM/CPU.
-    disableChatHandling: true 
+    // 🛑 THE KEEPALIVE FIX: Tells Mineflayer to wait 10 minutes for server lag 
+    // instead of instantly panicking and kicking itself.
+    checkTimeoutInterval: 600000 
   });
 
-  // ✅ THE ULTIMATE ANTI-LAG FIX
-  // This completely disables gravity, block collision, and physics calculations.
-  // It stops the Node.js event loop from freezing on Render's weak CPU.
+  // 🛡️ DISABLE PHYSICS: Saves huge amounts of CPU on Render and prevents freezing
   bot.physicsEnabled = false;
 
-  // Resource Pack Bypass (Keep this, it's working!)
+  // ⚡ RAW KEEPALIVE BYPASS: Instantly bounces heartbeats back to the server
+  bot._client.on('keep_alive', (packet) => {
+      try {
+          bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId });
+      } catch (e) {}
+  });
+
+  // 📦 RESOURCE PACK BYPASS: Simulates a human downloading the texture pack
   bot._client.on('add_resource_pack', (data) => {
-    console.log("📦 Bypassing resource pack...");
+    console.log("📦 Bypassing server resource pack...");
     try {
       bot._client.write('resource_pack_receive', { uuid: data.uuid, result: 3 });
       setTimeout(() => {
           bot._client.write('resource_pack_receive', { uuid: data.uuid, result: 4 });
           setTimeout(() => {
               bot._client.write('resource_pack_receive', { uuid: data.uuid, result: 0 });
+              console.log("📦 Pack bypass successful!");
           }, 2000);
       }, 3000);
     } catch (err) {
       console.log("⚠ Failed to bypass pack:", err.message);
+    }
+  });
+
+  // 💬 CHAT LOGGER: Watch the Render console! If the server says "Please /login", it will show here.
+  bot.on('message', (message) => {
+    const text = message.toString();
+    if (text.trim()) {
+        console.log(`[CHAT] ${text}`);
     }
   });
 
@@ -80,10 +95,9 @@ function startBot() {
 
     if (afkInterval) clearInterval(afkInterval);
 
+    // 🏃 ANTI-AFK: Safe for disabled physics (Head/Arm movement only)
     afkInterval = setInterval(() => {
       if (!bot.entity) return;
-      bot.setControlState('sneak', true);
-      setTimeout(() => bot.setControlState('sneak', false), 1000);
       bot.swingArm('right');
       bot.look(Math.random() * Math.PI * 2, 0);
     }, 30000);
@@ -95,7 +109,7 @@ function startBot() {
     if (afkInterval) clearInterval(afkInterval);
 
     setTimeout(() => {
-      reconnectDelay = Math.min(reconnectDelay * 2, 300000);
+      reconnectDelay = Math.min(reconnectDelay * 2, 300000); // Max 5 mins
       startBot();
     }, reconnectDelay);
   });
@@ -111,6 +125,7 @@ function startBot() {
 }
 
 // ---------------- CRASH SAFETY ----------------
+// Prevents the Node process from dying entirely on free hosts
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
