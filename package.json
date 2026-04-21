@@ -1,7 +1,7 @@
 {
-  "name": "foxtrap-bot",
+  "name": "minecraft-bot",
   "version": "1.0.0",
-  "description": "Minecraft AFK Bot",
+  "description": "AFK Bot",
   "main": "bot.js",
   "scripts": {
     "start": "node bot.js"
