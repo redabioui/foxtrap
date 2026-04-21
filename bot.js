@@ -3,7 +3,7 @@ const mineflayer = require('mineflayer')
 const fs = require('fs')
 const path = require('path')
 
-// --- Dummy Web Server (required for Render) ---
+// ---------------- WEB SERVER (Render requirement) ----------------
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' })
   res.end('Bot is running!')
@@ -13,9 +13,9 @@ const port = process.env.PORT || 3000
 server.listen(port, () => {
   console.log(`Web server listening on port ${port}`)
 })
-// ------------------------------------------------
+// ------------------------------------------------------------------
 
-// --- SESSION SAVER (Prevents Microsoft 24h lock) ---
+// ---------------- AUTH CACHE ----------------
 const authFolder = './auth_cache'
 const authFile = path.join(authFolder, 'nmp-cache.json')
 
@@ -24,30 +24,31 @@ if (process.env.AUTH_DATA) {
   try {
     fs.writeFileSync(authFile, process.env.AUTH_DATA)
   } catch (e) {
-    console.log("Auth write error:", e.message)
+    console.log("Auth save error:", e.message)
   }
 }
-// ---------------------------------------------------
+// --------------------------------------------
 
 let bot = null
 let reconnectDelay = 30000
 let movementInterval = null
 
-// --- Discord webhook sender ---
+// ---------------- DISCORD WEBHOOK ----------------
 function sendDiscord(msg) {
   if (!process.env.WEBHOOK) return
+
   fetch(process.env.WEBHOOK, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ content: msg })
   }).catch(() => {})
 }
+// --------------------------------------------------
 
-// --- Start bot function ---
 function startBot() {
   bot = mineflayer.createBot({
     host: process.env.SERVER_IP,
-    port: 25565,
+    port: Number(process.env.SERVER_PORT) || 25565,
     username: process.env.MC_EMAIL,
     auth: 'microsoft',
     version: "1.20.4",
@@ -58,27 +59,15 @@ function startBot() {
     console.log("Connected")
     sendDiscord("🟢 Bot connected!")
 
-    // Save session to logs
-    setTimeout(() => {
-      if (fs.existsSync(authFile)) {
-        const data = fs.readFileSync(authFile, 'utf8')
-        if (data !== process.env.AUTH_DATA) {
-          console.log("\n--- SAVE THIS TO RENDER ENV 'AUTH_DATA' ---\n")
-          console.log(data)
-          console.log("\n------------------------------------------\n")
-        }
-      }
-    }, 5000)
-
     reconnectDelay = 30000
 
     if (movementInterval) clearInterval(movementInterval)
 
-    // Anti-AFK (safe)
+    // Anti-AFK
     movementInterval = setInterval(() => {
       if (!bot.entity) return
       bot.swingArm('right')
-      console.log("👊 Anti-AFK click")
+      console.log("👊 Anti-AFK")
     }, 300000)
   })
 
@@ -103,7 +92,7 @@ function startBot() {
   })
 }
 
-// --- Global error protection ---
+// ---------------- GLOBAL SAFETY ----------------
 process.on('unhandledRejection', err => {
   console.log("Unhandled:", err.message)
 })
@@ -111,6 +100,6 @@ process.on('unhandledRejection', err => {
 process.on('uncaughtException', err => {
   console.log("Crash:", err.message)
 })
+// ----------------------------------------------
 
-// --- Start bot ---
 startBot()
