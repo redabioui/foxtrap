@@ -44,8 +44,10 @@ function startBot() {
     port: Number(process.env.SERVER_PORT) || 25565,
     username: process.env.MC_EMAIL,
     auth: 'microsoft',
-    // Set to false to auto-detect, or use a standard Java version like "1.21.1"
-    version: process.env.MC_VERSION || false, 
+    
+    // ✅ LOCKED TO EXACT VERSION
+    version: "1.21.11", 
+    
     profilesFolder: authFolder
   });
 
@@ -56,22 +58,25 @@ function startBot() {
 
     if (afkInterval) clearInterval(afkInterval);
 
-    // Advanced Anti-AFK: Jump, look around, and swing every 2 minutes
+    // ✅ AGGRESSIVE ANTI-AFK: Sneak, swing, and look every 30 seconds
     afkInterval = setInterval(() => {
       if (!bot.entity) return;
-      bot.setControlState('jump', true);
-      bot.look(Math.random() * Math.PI * 2, (Math.random() * Math.PI) - Math.PI/2);
-      setTimeout(() => bot.setControlState('jump', false), 500); // Stop jumping after half a second
+      
+      bot.setControlState('sneak', true);
+      setTimeout(() => bot.setControlState('sneak', false), 1000);
+      
       bot.swingArm('right');
-    }, 120000); 
+      bot.look(Math.random() * Math.PI * 2, 0);
+    }, 30000); 
   });
 
+  // ✅ AUTO-REJOIN LOGIC
   bot.on('end', (reason) => {
     console.log(`🔴 Disconnected: ${reason}`);
     sendDiscord(`🔴 Disconnected (${reason}). Reconnecting in ${reconnectDelay / 1000}s`);
     if (afkInterval) clearInterval(afkInterval);
 
-    // Exponential backoff capped at 5 minutes
+    // Auto-reconnect with exponential backoff (capped at 5 mins)
     setTimeout(() => {
       reconnectDelay = Math.min(reconnectDelay * 2, 300000); 
       startBot();
@@ -85,11 +90,12 @@ function startBot() {
 
   bot.on('error', (err) => {
     console.log("⚠ Bot Error:", err.message);
-    // Don't call startBot() here; let the 'end' event handle reconnections
+    // The 'end' event will trigger right after an error and handle the rejoin automatically
   });
 }
 
 // ---------------- CRASH SAFETY ----------------
+// ✅ These prevent the entire Node.js app from crashing and stopping on Render
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
