@@ -10,7 +10,8 @@ const server = http.createServer((req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-server.listen(port, () => {
+// ✅ FIX 1: Explicitly bind to '0.0.0.0' so Render's 60-second health check doesn't kill the bot
+server.listen(port, '0.0.0.0', () => {
   console.log(`Web server listening on port ${port}`);
 });
 
@@ -25,7 +26,7 @@ if (process.env.AUTH_DATA) {
 
 // ---------------- BOT LOGIC ----------------
 let bot;
-let reconnectDelay = 10000; // Start with 10s delay
+let reconnectDelay = 10000; 
 let afkInterval;
 
 function sendDiscord(msg) {
@@ -44,39 +45,42 @@ function startBot() {
     port: Number(process.env.SERVER_PORT) || 25565,
     username: process.env.MC_EMAIL,
     auth: 'microsoft',
-    
-    // ✅ LOCKED TO EXACT VERSION
     version: "1.21.11", 
-    
-    profilesFolder: authFolder
+    profilesFolder: authFolder,
+
+    // ✅ FIX 2: Tiny view distance. Prevents Render's 512MB RAM from maxing out 
+    // and causing the bot to miss KeepAlive packets.
+    viewDistance: 'tiny' 
+  });
+
+  // ✅ FIX 3: Auto-accept server resource packs. 
+  // Servers will kick you after exactly 60 seconds if you ignore their pack.
+  bot.on('resourcePack', (url, hash) => {
+    console.log("📦 Accepting server resource pack...");
+    bot.acceptResourcePack();
   });
 
   bot.on('spawn', () => {
     console.log("🟢 Connected to server!");
     sendDiscord("🟢 Bot connected!");
-    reconnectDelay = 10000; // Reset delay on successful connection
+    reconnectDelay = 10000; 
 
     if (afkInterval) clearInterval(afkInterval);
 
-    // ✅ AGGRESSIVE ANTI-AFK: Sneak, swing, and look every 30 seconds
     afkInterval = setInterval(() => {
       if (!bot.entity) return;
-      
       bot.setControlState('sneak', true);
       setTimeout(() => bot.setControlState('sneak', false), 1000);
-      
       bot.swingArm('right');
       bot.look(Math.random() * Math.PI * 2, 0);
     }, 30000); 
   });
 
-  // ✅ AUTO-REJOIN LOGIC
   bot.on('end', (reason) => {
     console.log(`🔴 Disconnected: ${reason}`);
     sendDiscord(`🔴 Disconnected (${reason}). Reconnecting in ${reconnectDelay / 1000}s`);
     if (afkInterval) clearInterval(afkInterval);
 
-    // Auto-reconnect with exponential backoff (capped at 5 mins)
     setTimeout(() => {
       reconnectDelay = Math.min(reconnectDelay * 2, 300000); 
       startBot();
@@ -90,12 +94,10 @@ function startBot() {
 
   bot.on('error', (err) => {
     console.log("⚠ Bot Error:", err.message);
-    // The 'end' event will trigger right after an error and handle the rejoin automatically
   });
 }
 
 // ---------------- CRASH SAFETY ----------------
-// ✅ These prevent the entire Node.js app from crashing and stopping on Render
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
