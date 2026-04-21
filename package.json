@@ -1,0 +1,15 @@
+{
+  "name": "foxtrap-bot",
+  "version": "1.0.0",
+  "description": "Minecraft AFK Bot",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js"
+  },
+  "dependencies": {
+    "mineflayer": "^4.20.1"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
