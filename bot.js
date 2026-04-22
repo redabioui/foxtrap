@@ -3,7 +3,7 @@ const mineflayer = require('mineflayer');
 const fs = require('fs');
 const path = require('path');
 
-// ---------------- WEB SERVER (For Render Health Checks) ----------------
+// ---------------- WEB SERVER ----------------
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
   res.end('Bot is running!');
@@ -23,92 +23,97 @@ if (process.env.AUTH_DATA) {
   fs.writeFileSync(authFile, process.env.AUTH_DATA);
 }
 
+// ---------------- DEEP DISCORD LOGGING ----------------
+let logBuffer = [];
+
+// This loop sends batched logs to Discord every 3 seconds to prevent rate-limiting bans
+setInterval(() => {
+  if (logBuffer.length > 0 && process.env.WEBHOOK) {
+    // Discord has a strict 2000 character limit per message
+    const content = logBuffer.join('\n').substring(0, 1980); 
+    fetch(process.env.WEBHOOK, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: `\`\`\`\n${content}\n\`\`\`` })
+    }).catch(() => {});
+    logBuffer = [];
+  }
+}, 3000); 
+
+function deepLog(msg) {
+  const time = new Date().toISOString().split('T')[1].split('.')[0]; // Gets HH:MM:SS
+  const formatted = `[${time}] ${msg}`;
+  console.log(formatted);
+  logBuffer.push(formatted);
+}
+
 // ---------------- BOT LOGIC ----------------
 let bot;
 let reconnectDelay = 10000;
 let afkInterval;
 
-function sendDiscord(msg) {
-  if (!process.env.WEBHOOK) return;
-  fetch(process.env.WEBHOOK, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ content: msg })
-  }).catch(() => {});
-}
-
 function startBot() {
-  console.log("Starting bot...");
+  deepLog("SYSTEM: Booting up new bot instance...");
+  
   bot = mineflayer.createBot({
     host: process.env.SERVER_IP,
     port: Number(process.env.SERVER_PORT) || 25565,
     username: process.env.MC_EMAIL,
     auth: 'microsoft',
-    version: "1.21.11",
+    version: "1.21.11", 
     profilesFolder: authFolder,
     viewDistance: 'tiny',
-    checkTimeoutInterval: 600000 // 10-minute lag tolerance
+    checkTimeoutInterval: 600000 
   });
 
-  // 🛡️ DISABLE PHYSICS
   bot.physicsEnabled = false;
 
-  // ⚡ RAW KEEPALIVE BYPASS
-  bot._client.on('keep_alive', (packet) => {
-      try {
-          bot._client.write('keep_alive', { keepAliveId: packet.keepAliveId });
-      } catch (e) {}
+  // 🔍 DEEP LOG: Raw Network Socket Monitor
+  bot._client.on('error', (err) => {
+      deepLog(`[TCP ERROR] Raw socket failed: ${err.message}`);
   });
 
-  // 📦 RESOURCE PACK BYPASS
   bot._client.on('add_resource_pack', (data) => {
-    console.log("📦 Bypassing server resource pack...");
+    deepLog("📦 Server requested resource pack. Attempting bypass...");
     try {
       bot._client.write('resource_pack_receive', { uuid: data.uuid, result: 3 });
       setTimeout(() => {
           bot._client.write('resource_pack_receive', { uuid: data.uuid, result: 4 });
           setTimeout(() => {
               bot._client.write('resource_pack_receive', { uuid: data.uuid, result: 0 });
-              console.log("📦 Pack bypass successful!");
+              deepLog("📦 Resource pack bypass sequence completed.");
           }, 2000);
       }, 3000);
     } catch (err) {
-      console.log("⚠ Failed to bypass pack:", err.message);
+      deepLog(`⚠ Pack Bypass Failed: ${err.message}`);
     }
   });
 
   bot.on('message', (message) => {
     const text = message.toString();
     if (text.trim()) {
-        console.log(`[CHAT] ${text}`);
+        deepLog(`[CHAT] ${text}`);
     }
   });
 
   bot.on('spawn', () => {
-    console.log("🟢 Connected to server!");
-    sendDiscord("🟢 Bot connected!");
+    deepLog("🟢 SUCCESS: Bot has officially spawned into the world!");
     reconnectDelay = 10000;
 
     if (afkInterval) clearInterval(afkInterval);
 
-    // 🏃 TCP SOCKET WARMER (Runs every 15 seconds)
-    // Swapping hotbar slots forces data through the proxy so it doesn't close the socket
     afkInterval = setInterval(() => {
       if (!bot.entity) return;
-      
       try {
           bot.swingArm('right');
           bot.setQuickBarSlot(Math.floor(Math.random() * 9)); 
-      } catch (e) {
-          // Ignore errors if the bot hasn't fully loaded its inventory yet
-      }
-      
+      } catch (e) {}
     }, 15000);
   });
 
   bot.on('end', (reason) => {
-    console.log(`🔴 Disconnected: ${reason}`);
-    sendDiscord(`🔴 Disconnected (${reason}). Reconnecting in ${reconnectDelay / 1000}s`);
+    deepLog(`🔴 DISCONNECTED: ${reason}`);
+    deepLog(`🔄 Reconnecting in ${reconnectDelay / 1000} seconds...`);
     if (afkInterval) clearInterval(afkInterval);
 
     setTimeout(() => {
@@ -118,21 +123,23 @@ function startBot() {
   });
 
   bot.on('kicked', (reason) => {
-    console.log(`⚠ Kicked: ${reason}`);
-    sendDiscord(`⚠ Kicked: ${reason}`);
+    // Minecraft kick reasons are often messy JSON. This parses them to readable text.
+    deepLog(`⚠ KICKED BY SERVER. Raw Reason: ${JSON.stringify(reason)}`);
   });
 
   bot.on('error', (err) => {
-    console.log("⚠ Bot Error:", err.message);
+    // err.stack provides the exact file and line number that crashed
+    deepLog(`🚨 BOT FATAL ERROR: ${err.stack}`);
   });
 }
 
 // ---------------- CRASH SAFETY ----------------
+// If Node.js itself tries to crash, we catch it, log it to Discord, and keep running.
 process.on('unhandledRejection', (reason, promise) => {
-    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    deepLog(`🔥 NODE JS UNHANDLED REJECTION: ${reason}`);
 });
 process.on('uncaughtException', (err) => {
-    console.error('Uncaught Exception:', err);
+    deepLog(`🔥 NODE JS EXCEPTION: ${err.stack}`);
 });
 
 // Initialize
